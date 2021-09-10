@@ -106,15 +106,18 @@ class Market:
         executionPlan = []
         while orderedBuyActions[0].price > orderedSellActions[0].price:
             bestBuy, bestSell = orderedBuyActions[0], orderedSellActions[0]
-            transQty = min(bestBuy.qty, bestSell.qty)
+            transQty = min(bestBuy.qty, -bestSell.qty)
             executionPlan += [TransactAction(bestBuy.agent,  resource, transQty, bestBuy.price)]
-            executionPlan += [TransactAction(bestSell.agent, resource, transQty, bestBuy.price)]
+            executionPlan += [TransactAction(bestSell.agent, resource, -transQty, bestBuy.price)]
             
             def updateActionQ(Q, qty):
                 if Q[0].qty == qty: Q.pop(0)
                 else:               Q[0].qty -= transQty
             updateActionQ(orderedBuyActions, transQty)
-            updateActionQ(orderedSellActions, transQty)
+            updateActionQ(orderedSellActions, -transQty)
+
+        # How to update the last-prices?
+        # We have a continuum of traded prices
 
         return executionPlan
 
@@ -126,7 +129,6 @@ class Market:
         for resource, actions in resourceWiseActions.items():
             executionPlan += Market.__processResourceExchange(resource, actions)
         return executionPlan
-
 
 class World:
     agentInfo = {}
@@ -143,6 +145,20 @@ class World:
             self.agentInfo[agent]['appetite'] = worldInitializationConfig['agentAppetiteGenerator'](agent, resourceGraph)
             self.agentInfo[agent]['capabilities'] = set()
         self.resourceGraph = resourceGraph
+        self.market = Market()
+
+    def simulateStep(self, proposedPlan):
+        # Creation can consume resources bought in current turn
+        # Exchanged resources & money is available on next turn only
+        createActions = filter(lambda x: isinstance(x, CreateAction), proposedPlan)
+        for action in createActions:
+            pass
+
+        executedPlan = self.market.simulateExchange(proposedPlan)
+        for action in executedPlan:
+            currAgentInfo = self.agentInfo[action.agent]
+            currAgentInfo['money'] -= action.qty * action.price
+            currAgentInfo['resources'][action.resource] += action.qty
 
 
 """
@@ -169,8 +185,7 @@ class Simulator:
         for agent in self.agents:
             proposedPlan += agent.plan(self.agentRewards[agent], self.world.agentInfo[agent], self.world.market) # TODO: Define agentRewards
 
-        newWorld = self.generateNewWorld(proposedPlan)
-        self.world = newWorld
+        self.updateWorld(proposedPlan)
         self.turn += 1
 
     def runSimulation(self, numTurns):
