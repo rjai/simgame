@@ -130,6 +130,7 @@ class Market:
             executionPlan += Market.__processResourceExchange(resource, actions)
         return executionPlan
 
+
 class World:
     agentInfo = {}
     agents = []
@@ -140,19 +141,29 @@ class World:
         self.agents = agents
         self.agentInfo = {}
         for agent in agents:
-            self.agentInfo[agent]['money'] = worldInitializationConfig['agentMoneyGenerator'](agent)
-            self.agentInfo[agent]['resources'] = worldInitializationConfig['agentResourceGenerator'](agent, resourceGraph)
-            self.agentInfo[agent]['appetite'] = worldInitializationConfig['agentAppetiteGenerator'](agent, resourceGraph)
-            self.agentInfo[agent]['capabilities'] = set()
+            self.agentInfo[agent] = {
+                'money': worldInitializationConfig['agentMoneyGenerator'](agent),
+                'resources': worldInitializationConfig['agentResourceGenerator'](agent, resourceGraph),
+                'appetite': worldInitializationConfig['agentAppetiteGenerator'](agent, resourceGraph),
+                'capabilities': set()
+            }
         self.resourceGraph = resourceGraph
         self.market = Market()
 
+    # All proposed actions are assumed to be <i>valid</i>
+    # ie, buy actions will have sufficient money to pay for themselves
+    #     sell actions will have sufficient resources to sell
+    # and create actions will have sufficient inputs for consuming
     def simulateStep(self, proposedPlan):
-        # Creation can consume resources bought in current turn
+        # Creation cannot consume resources bought in current turn
         # Exchanged resources & money is available on next turn only
         createActions = filter(lambda x: isinstance(x, CreateAction), proposedPlan)
         for action in createActions:
-            pass
+            currAgentInfo = self.agentInfo[action.agent]
+            inputs = action.resource.getInputs()
+            for iResource, iQty in inputs:
+                currAgentInfo['resources'][iResource] -= iQty * action.qty
+            currAgentInfo['resources'][action.resource] += action.qty
 
         executedPlan = self.market.simulateExchange(proposedPlan)
         for action in executedPlan:
