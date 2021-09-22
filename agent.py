@@ -1,9 +1,8 @@
 """
 TODO
-    - rewards
     - generation of new world
-        - aggregation of actions (market)
-
+        - computing last prices
+    - rewards
 """
 
 import collections
@@ -13,17 +12,20 @@ import collections
         (Serves as a wrapper for the RI algo)
 """
 
+# TODO
 class GovernmentAgent:
     pass
 
+# TODO
 class Agent:
     name = None
 
     def __init__(self, name):
         self.name = name
 
+    # Returns list of actions: buy / sell / create
     def plan(self, reward, world):
-        return [] # List of actions: buy/sell/create
+        return [] 
 
 
 """
@@ -80,10 +82,9 @@ class Market:
     @staticmethod
     def __getResourceWiseTransactions(actionPlan):
         resourceWiseActions = collections.defaultdict(list)
-        for agent in actionPlan:
-            for action in actionPlan[agent]:
-                if not isinstance(action, CreateAction):
-                    resourceWiseActions[action.resource] += [action]
+        for action in actionPlan:
+            if isinstance(action, TransactAction):
+                resourceWiseActions[action.resource] += [action]
         return resourceWiseActions
 
     # Matches order wrt priority
@@ -150,11 +151,46 @@ class World:
         self.resourceGraph = resourceGraph
         self.market = Market()
 
-    # All proposed actions are assumed to be <i>valid</i>
+    # Group actions by agent
+    @staticmethod
+    def __getAgentWiseTransactions(actionPlan):
+        agentWiseActions = collections.defaultdict(list)
+        for action in actionPlan:
+            agentWiseActions[action.agent] += [action]
+        return agentWiseActions
+
+    # All proposed actions should be <i>valid</i>
     # ie, buy actions will have sufficient money to pay for themselves
     #     sell actions will have sufficient resources to sell
     # and create actions will have sufficient inputs for consuming
+    # 
+    # PS: Bad actors will have all their proposed actions revoked, 
+    #     I cant be bothered to find maximal set of proposed actions that can be valid given agents stuff
+    def __filterInvalidActions(self, actionPlan):
+        agentWiseActions = World.__getAgentWiseTransactions(actionPlan)
+        validActions = []
+        for agent, actions in agentWiseActions.items():
+            resourceReqs = collections.defaultdict(int)
+            moneyReqs = 0
+            for action in actions:
+                if isinstance(action, TransactAction) and action.qty > 0:
+                    moneyReqs += action.qty * action.price
+                elif isinstance(action, TransactAction):
+                    resourceReqs[action.resource] += action.qty
+                elif isinstance(action, CreateAction):
+                    for iResource, iQty in action.resource.getInputs():
+                        resourceReqs[iResource] += iQty * action.qty
+            
+            currAgentInfo = self.agentInfo[agent]
+            if currAgentInfo['money'] >= moneyReqs and \
+                all(currAgentInfo[resource] >= resourceQty for resource, resourceQty in resourceReqs.items()):
+                validActions += actions
+        return validActions
+
     def simulateStep(self, proposedPlan):
+        # Remove actions that impossible for an agent to execute
+        proposedPlan = self.__filterInvalidActions(proposedPlan)
+
         # Creation cannot consume resources bought in current turn
         # Exchanged resources & money is available on next turn only
         createActions = filter(lambda x: isinstance(x, CreateAction), proposedPlan)
