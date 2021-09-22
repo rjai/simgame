@@ -1,10 +1,3 @@
-"""
-TODO
-    - generation of new world
-        - computing last prices
-    - rewards
-"""
-
 import collections
 
 """
@@ -12,11 +5,11 @@ import collections
         (Serves as a wrapper for the RI algo)
 """
 
-# TODO
+# TODO - define agents
 class GovernmentAgent:
     pass
 
-# TODO
+# TODO - define agents
 class Agent:
     name = None
 
@@ -65,13 +58,16 @@ class Resource:
         self.buildCost = buildCost
         self.sourceResources = sourceResources
 
+
+# TODO - define resourceGraph
 class ResourceGraph:
-    resourceArray = []
+
     def __init__(self, resourceConfigFile):
         pass
 
     def resourceArray(self):
         return self.resourceArray
+
 
 class Market:
     
@@ -119,6 +115,7 @@ class Market:
 
         # How to update the last-prices?
         # We have a continuum of traded prices
+        # TODO - computing last prices
 
         return executionPlan
 
@@ -187,7 +184,7 @@ class World:
                 validActions += actions
         return validActions
 
-    def simulateStep(self, proposedPlan):
+    def updateWorld(self, proposedPlan):
         # Remove actions that impossible for an agent to execute
         proposedPlan = self.__filterInvalidActions(proposedPlan)
 
@@ -207,32 +204,34 @@ class World:
             currAgentInfo['money'] -= action.qty * action.price
             currAgentInfo['resources'][action.resource] += action.qty
 
+        # TODO - compute rewards
+        return agentRewards
+
 
 """
     Implementing the actual Simulator 
         (Runs the interactions between the agents & environment)
 """
 
+# TODO - define gameConfig
 class GameConfig:
     pass
 
 class Simulator:
-    world = None
-    agents = []
-    resourceGraph = None
-    turn = 0
 
     def __init__(self, worldInitializationConfig, resourceGraph):
         self.resourceGraph = resourceGraph
         self.agents = [Agent(x) for x in range(worldInitializationConfig['numAgents'])]
         self.world = World(worldInitializationConfig, self.agents, resourceGraph)
+        self.agentRewards = {agent: 0 for agent in self.agents}
+        self.turn = 0
 
     def runSimulationStep(self):
         proposedPlan = []
         for agent in self.agents:
-            proposedPlan += agent.plan(self.agentRewards[agent], self.world.agentInfo[agent], self.world.market) # TODO: Define agentRewards
+            proposedPlan += agent.plan(self.agentRewards[agent], self.world.agentInfo[agent], self.world.market)
 
-        self.updateWorld(proposedPlan)
+        self.agentRewards = self.updateWorld(proposedPlan)
         self.turn += 1
 
     def runSimulation(self, numTurns):
