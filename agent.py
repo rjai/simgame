@@ -11,13 +11,12 @@ class GovernmentAgent:
 
 # TODO - define agents
 class Agent:
-    name = None
-
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, id):
+        self.id = id
 
     # Returns list of actions: buy / sell / create
-    def plan(self, reward, world):
+    def plan(self, reward, agentInfo, market):
+        # First cut: Choose randomly from among set of all possible actions
         return [] 
 
 
@@ -33,14 +32,17 @@ class Action:
 
 class CreateAction(Action):
     def __init__(self, agent, resource, qty):
-        super(TransactAction, self).__init__(self, agent, resource, qty)
+        super().__init__(self, agent, resource, qty)
 
 # negative qty is selling for agent
 class TransactAction(Action):
     def __init__(self, agent, resource, qty, price):
-        super(TransactAction, self).__init__(self, agent, resource, qty)
+        super().__init__(self, agent, resource, qty)
         self.price = price
 
+class ConsumeAction(Action):
+    def __init__(self, agent, resource, qty):
+        super().__init__(agent, resource, qty)
 
 """
     Modelling the Environment
@@ -101,6 +103,7 @@ class Market:
         # 
         # Also, for price-deltas, we'll assume buyers are dumb and hand over the difference as bonus to sellers
         executionPlan = []
+        bestBuy, bestSell = None, None
         while orderedBuyActions[0].price > orderedSellActions[0].price:
             bestBuy, bestSell = orderedBuyActions[0], orderedSellActions[0]
             transQty = min(bestBuy.qty, -bestSell.qty)
@@ -113,11 +116,7 @@ class Market:
             updateActionQ(orderedBuyActions, transQty)
             updateActionQ(orderedSellActions, -transQty)
 
-        # How to update the last-prices?
-        # We have a continuum of traded prices
-        # TODO - computing last prices
-
-        return executionPlan
+        return executionPlan, bestBuy.price if bestBuy != None else None
 
     # Returns an executionPlan of approved actions
     def simulateExchange(self, actionPlan):
@@ -125,7 +124,10 @@ class Market:
 
         executionPlan = []
         for resource, actions in resourceWiseActions.items():
-            executionPlan += Market.__processResourceExchange(resource, actions)
+            executedActions, lastPrice = Market.__processResourceExchange(resource, actions)
+            executionPlan += executedActions
+            if lastPrice != None:
+                self.lastPrices[resource] = lastPrice 
         return executionPlan
 
 
@@ -143,7 +145,9 @@ class World:
                 'money': worldInitializationConfig['agentMoneyGenerator'](agent),
                 'resources': worldInitializationConfig['agentResourceGenerator'](agent, resourceGraph),
                 'appetite': worldInitializationConfig['agentAppetiteGenerator'](agent, resourceGraph),
-                'capabilities': set()
+                'capabilities': set(),
+                'lastReward': 0,
+                'netReward': 0
             }
         self.resourceGraph = resourceGraph
         self.market = Market()
@@ -177,6 +181,8 @@ class World:
                 elif isinstance(action, CreateAction):
                     for iResource, iQty in action.resource.getInputs():
                         resourceReqs[iResource] += iQty * action.qty
+                elif isinstance(action, ConsumeAction):
+                    resourceReqs[action.resource] += action.qty
             
             currAgentInfo = self.agentInfo[agent]
             if currAgentInfo['money'] >= moneyReqs and \
@@ -185,6 +191,10 @@ class World:
         return validActions
 
     def updateWorld(self, proposedPlan):
+        # Rewards will be computed as happiness from satisified appetite + net-money gain
+        for agent in self.agents:
+            self.agentInfo[agent]['lastReward'] = 0
+
         # Remove actions that impossible for an agent to execute
         proposedPlan = self.__filterInvalidActions(proposedPlan)
 
@@ -198,14 +208,21 @@ class World:
                 currAgentInfo['resources'][iResource] -= iQty * action.qty
             currAgentInfo['resources'][action.resource] += action.qty
 
+        consumeActions = filter(lambda x: isinstance(x, ConsumeAction), proposedPlan)
+        for action in consumeActions:
+            currAgentInfo = self.agentInfo[action.agent]
+            currAgentInfo['resources'][action.resource] -= action.qty
+            currAgentInfo['lastReward'] += currAgentInfo['appetite'][action.resource] * action.qty
+
         executedPlan = self.market.simulateExchange(proposedPlan)
         for action in executedPlan:
             currAgentInfo = self.agentInfo[action.agent]
             currAgentInfo['money'] -= action.qty * action.price
+            currAgentInfo['lastReward'] -= action.qty * action.price
             currAgentInfo['resources'][action.resource] += action.qty
 
-        # TODO - compute rewards
-        return agentRewards
+        for agent in self.agents:
+            self.agentInfo[agent]['netReward'] += self.agentInfo[agent]['lastReward']
 
 
 """
@@ -229,9 +246,9 @@ class Simulator:
     def runSimulationStep(self):
         proposedPlan = []
         for agent in self.agents:
-            proposedPlan += agent.plan(self.agentRewards[agent], self.world.agentInfo[agent], self.world.market)
+            proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
 
-        self.agentRewards = self.updateWorld(proposedPlan)
+        self.updateWorld(proposedPlan)
         self.turn += 1
 
     def runSimulation(self, numTurns):
