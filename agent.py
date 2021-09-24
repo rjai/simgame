@@ -1,3 +1,5 @@
+import random
+import numpy as np
 import collections
 
 """
@@ -5,19 +7,49 @@ import collections
         (Serves as a wrapper for the RI algo)
 """
 
-# TODO - define agents
-class GovernmentAgent:
-    pass
+# TODO - definev gov agents
+# class GovernmentAgent:
+#     pass
 
-# TODO - define agents
 class Agent:
     def __init__(self, id):
         self.id = id
 
+    # Qty & prices will be chosen randomly
+    def __genRandomAction(self, agentInfo, market):
+        consumeActions, createActions = [], []
+        buyActions, sellActions = [], []
+        
+        for resource in agentInfo['resources']:
+            # Add possible buy action
+            proposedPrice = int( np.random.normal(market.lastPrices[resource], market.lastPrices[resource]/4) )
+            proposedQty = 1 + random.randrange(agentInfo['money'] // proposedPrice)
+            buyActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
+
+            # Add possible create action
+            creatableQty = min(agentInfo['resources'][iResource] // iQty for iResource, iQty in resource.getInputs())
+            if creatableQty > 0:
+                proposedQty = 1 + random.rangrange(creatableQty)
+                createActions += [CreateAction(self, resource, proposedQty)]
+
+            if agentInfo['resources'][resource] > 0:
+                proposedQty = 1 + random.randrange(agentInfo['resources'][resource])
+                
+                # Add possible sell action
+                sellActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
+
+                # Add possible consume action
+                consumeActions += [ConsumeAction(self, resource, proposedQty)]
+
+        allActions = consumeActions + createActions + buyActions + sellActions
+        random.shuffle(allActions)
+
+        return [allActions[0]]
+
     # Returns list of actions: buy / sell / create
+    # First cut: Choose randomly from among set of all possible actions, will choose only 1 per turn
     def plan(self, reward, agentInfo, market):
-        # First cut: Choose randomly from among set of all possible actions
-        return [] 
+        return self.__genRandomAction()
 
 
 """
