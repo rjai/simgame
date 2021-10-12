@@ -2,6 +2,33 @@ import random
 import numpy as np
 import collections
 
+#TODO: Move config to seperate file
+#ConfigStart
+import random
+
+def agentMoneyGenerator(agent):
+    return random.randint(10,10000)
+
+def agentResourceGenerator(agent, resourceGraph):
+    ret = {}
+    for resource in resourceGraph.resourceArray():
+        ret[resource] = random.randint(10,10000)
+    return ret
+
+def agentAppetiteGenerator(agent, resourceGraph):
+    ret = {}
+    for resource in resourceGraph.resourceArray():
+        ret[resource] = random.randint(10,100)
+    return ret
+
+gameConfig = {
+    "numAgents": 10000,
+    "agentMoneyGenerator": agentMoneyGenerator,
+    "resources": agentResourceGenerator,
+    "appetite": agentAppetiteGenerator
+}
+#ConfigEnd
+
 """
     Modelling Actors in our simulation
         (Serves as a wrapper for the RI algo)
@@ -100,8 +127,13 @@ class ResourceGraph:
         pass
 
     def resourceArray(self):
-        return self.resourceArray
+        return ["iron", "steel"]
 
+    def getInputs(self, resourceName):
+        if resourceName == "iron":
+            return []
+        else:
+            return ["iron", 2]        
 
 class Market:
     
@@ -261,11 +293,6 @@ class World:
     Implementing the actual Simulator 
         (Runs the interactions between the agents & environment)
 """
-
-# TODO - define gameConfig
-class GameConfig:
-    pass
-
 class Simulator:
 
     def __init__(self, worldInitializationConfig, resourceGraph):
