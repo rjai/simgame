@@ -50,8 +50,9 @@ class Agent:
         for resource in agentInfo['resources']:
             # Add possible buy action
             proposedPrice = int( np.random.normal(market.lastPrices[resource], market.lastPrices[resource]/4) )
-            proposedQty = 1 + random.randrange(agentInfo['money'] // proposedPrice)
-            buyActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
+            if proposedPrice < agentInfo['money'] and proposedPrice > 0:
+                proposedQty = 1 + random.randrange(agentInfo['money'] // proposedPrice)
+                buyActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
 
             # Add possible create action
             resourceInputs = ResourceGraph.getInputs(resource)
@@ -254,7 +255,7 @@ class World:
             
             currAgentInfo = self.agentInfo[agent]
             if currAgentInfo['money'] >= moneyReqs and \
-                all(currAgentInfo[resource] >= resourceQty for resource, resourceQty in resourceReqs.items()):
+                all(currAgentInfo["resources"][resource] >= resourceQty for resource, resourceQty in resourceReqs.items()):
                 validActions += actions
         return validActions
 
@@ -311,7 +312,7 @@ class Simulator:
         for agent in self.agents:
             proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
 
-        self.updateWorld(proposedPlan)
+        self.world.updateWorld(proposedPlan)
         self.turn += 1
 
     def runSimulation(self, numTurns):
