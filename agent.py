@@ -7,7 +7,7 @@ import collections
 import random
 
 def agentMoneyGenerator(agent):
-    return random.randint(10,10000)
+    return random.randint(10,100)
 
 def agentResourceGenerator(agent, resourceGraph):
     ret = {}
@@ -18,7 +18,7 @@ def agentResourceGenerator(agent, resourceGraph):
 def agentAppetiteGenerator(agent, resourceGraph):
     ret = {}
     for resource in resourceGraph.resourceArray():
-        ret[resource] = random.randint(10,100)
+        ret[resource] = 1
     return ret
 
 gameConfig = {
@@ -69,7 +69,7 @@ class Agent:
                 proposedQty = 1 + random.randrange(agentInfo['resources'][resource])
                 
                 # Add possible sell action
-                sellActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
+                sellActions += [TransactAction(self, resource, -proposedQty, proposedPrice)]
 
                 # Add possible consume action
                 consumeActions += [ConsumeAction(self, resource, proposedQty)]
@@ -138,7 +138,7 @@ class ResourceGraph:
         if resourceName == "iron":
             return []
         else:
-            return [("iron", 2)]        
+            return [("iron", 2)]
 
 class Market:
     
@@ -173,7 +173,12 @@ class Market:
         # Also, for price-deltas, we'll assume buyers are dumb and hand over the difference as bonus to sellers
         executionPlan = []
         bestBuy, bestSell = None, None
-        while orderedBuyActions[0].price > orderedSellActions[0].price:
+        print("******")
+        print(len(orderedBuyActions), len(orderedSellActions))
+        if len(orderedBuyActions) > 0 and len(orderedSellActions) > 0:
+            print(max([x.price for x in orderedBuyActions]), min([x.price for x in orderedSellActions]))
+        print("******END")
+        while len(orderedBuyActions) > 0 and len(orderedSellActions) > 0 and orderedBuyActions[0].price > orderedSellActions[0].price:
             bestBuy, bestSell = orderedBuyActions[0], orderedSellActions[0]
             transQty = min(bestBuy.qty, -bestSell.qty)
             executionPlan += [TransactAction(bestBuy.agent,  resource, transQty, bestBuy.price)]
@@ -263,36 +268,44 @@ class World:
         # Rewards will be computed as happiness from satisified appetite + net-money gain
         for agent in self.agents:
             self.agentInfo[agent]['lastReward'] = 0
-
         # Remove actions that impossible for an agent to execute
         proposedPlan = self.__filterInvalidActions(proposedPlan)
-
+        print(len(proposedPlan), "asdf")
         # Creation cannot consume resources bought in current turn
         # Exchanged resources & money is available on next turn only
-        createActions = filter(lambda x: isinstance(x, CreateAction), proposedPlan)
+        createActions = list(filter(lambda x: isinstance(x, CreateAction), proposedPlan))
         for action in createActions:
             currAgentInfo = self.agentInfo[action.agent]
             inputs = ResourceGraph.getInputs(action.resource)
             for iResource, iQty in inputs:
                 currAgentInfo['resources'][iResource] -= iQty * action.qty
             currAgentInfo['resources'][action.resource] += action.qty
+        print("Create Actions:", len(createActions))
 
-        consumeActions = filter(lambda x: isinstance(x, ConsumeAction), proposedPlan)
+        consumeActions = list(filter(lambda x: isinstance(x, ConsumeAction), proposedPlan))
         for action in consumeActions:
             currAgentInfo = self.agentInfo[action.agent]
             currAgentInfo['resources'][action.resource] -= action.qty
             currAgentInfo['lastReward'] += currAgentInfo['appetite'][action.resource] * action.qty
+        print("Consumed Actions:", len(consumeActions))
+        print("Consumed Steel:", len([x for x in consumeActions if x.resource == 'steel']))
 
-        executedPlan = self.market.simulateExchange(proposedPlan)
+        executedPlan = list(self.market.simulateExchange(proposedPlan))
         for action in executedPlan:
             currAgentInfo = self.agentInfo[action.agent]
             currAgentInfo['money'] -= action.qty * action.price
             currAgentInfo['lastReward'] -= action.qty * action.price
             currAgentInfo['resources'][action.resource] += action.qty
+        print("Executed Plan:", len(executedPlan))
 
         for agent in self.agents:
             self.agentInfo[agent]['netReward'] += self.agentInfo[agent]['lastReward']
 
+        ret = collections.defaultdict(float)
+        for resource in resourceGraph.resourceArray():
+            for agent in self.agents:
+                ret[resource] += self.agentInfo[agent]["resources"][resource]
+        print(ret)
 
 """
     Implementing the actual Simulator 
@@ -304,10 +317,17 @@ class Simulator:
         self.resourceGraph = resourceGraph
         self.agents = [Agent(x) for x in range(worldInitializationConfig['numAgents'])]
         self.world = World(worldInitializationConfig, self.agents, resourceGraph)
-        self.agentRewards = {agent: 0 for agent in self.agents}
+        # self.agentRewards = {agent: 0 for agent in self.agents}
         self.turn = 0
 
     def runSimulationStep(self):
+        print("blah", self.turn)
+
+        retreward = 0
+        for agent in self.agents:
+           retreward += self.world.agentInfo[agent]["netReward"]
+        print(retreward)
+
         proposedPlan = []
         for agent in self.agents:
             proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
