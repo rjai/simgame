@@ -23,7 +23,7 @@ def agentAppetiteGenerator(agent, resourceGraph):
 
 gameConfig = {
     "numAgents": 10000,
-    "agentMoneyGenerator": agentMoneyGenerator,
+    "money": agentMoneyGenerator,
     "resources": agentResourceGenerator,
     "appetite": agentAppetiteGenerator
 }
@@ -76,7 +76,7 @@ class Agent:
     # Returns list of actions: buy / sell / create
     # First cut: Choose randomly from among set of all possible actions, will choose only 1 per turn
     def plan(self, reward, agentInfo, market):
-        return self.__genRandomAction()
+        return self.__genRandomAction(agentInfo, market)
 
 
 """
@@ -205,15 +205,15 @@ class World:
         self.agentInfo = {}
         for agent in agents:
             self.agentInfo[agent] = {
-                'money': worldInitializationConfig['agentMoneyGenerator'](agent),
-                'resources': worldInitializationConfig['agentResourceGenerator'](agent, resourceGraph),
-                'appetite': worldInitializationConfig['agentAppetiteGenerator'](agent, resourceGraph),
+                'money': worldInitializationConfig['money'](agent),
+                'resources': worldInitializationConfig['resources'](agent, resourceGraph),
+                'appetite': worldInitializationConfig['appetite'](agent, resourceGraph),
                 'capabilities': set(),
                 'lastReward': 0,
                 'netReward': 0
             }
         self.resourceGraph = resourceGraph
-        self.market = Market()
+        self.market = Market(self.resourceGraph)
 
     # Group actions by agent
     @staticmethod
@@ -310,5 +310,10 @@ class Simulator:
         self.turn += 1
 
     def runSimulation(self, numTurns):
-        for _ in numTurns:
+        for _ in range(numTurns):
             self.runSimulationStep()
+
+if __name__=="__main__":
+    resourceGraph = ResourceGraph()
+    sim = Simulator(gameConfig, resourceGraph)
+    sim.runSimulation(100)
