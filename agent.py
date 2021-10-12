@@ -54,9 +54,14 @@ class Agent:
             buyActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
 
             # Add possible create action
-            creatableQty = min(agentInfo['resources'][iResource] // iQty for iResource, iQty in ResourceGraph.getInputs(resource))
+            resourceInputs = ResourceGraph.getInputs(resource)
+            if len(resourceInputs) == 0:
+                creatableQty = 10
+            else:
+                creatableQty = min(agentInfo['resources'][iResource] // iQty for iResource, iQty in resourceInputs)
+
             if creatableQty > 0:
-                proposedQty = 1 + random.rangrange(creatableQty)
+                proposedQty = 1 + random.randrange(creatableQty)
                 createActions += [CreateAction(self, resource, proposedQty)]
 
             if agentInfo['resources'][resource] > 0:
@@ -91,12 +96,12 @@ class Action:
 
 class CreateAction(Action):
     def __init__(self, agent, resource, qty):
-        super().__init__(self, agent, resource, qty)
+        super().__init__(agent, resource, qty)
 
 # negative qty is selling for agent
 class TransactAction(Action):
     def __init__(self, agent, resource, qty, price):
-        super().__init__(self, agent, resource, qty)
+        super().__init__(agent, resource, qty)
         self.price = price
 
 class ConsumeAction(Action):
@@ -132,12 +137,12 @@ class ResourceGraph:
         if resourceName == "iron":
             return []
         else:
-            return ["iron", 2]        
+            return [("iron", 2)]        
 
 class Market:
     
     def __init__(self, resourceGraph):
-        self.lastPrices = {resource : None for resource in resourceGraph.resourceArray()}
+        self.lastPrices = {resource : random.randint(10,50) for resource in resourceGraph.resourceArray()}
 
     # Group actions by resource
     @staticmethod
