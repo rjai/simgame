@@ -54,7 +54,7 @@ class Agent:
             buyActions += [TransactAction(self, resource, proposedQty, proposedPrice)]
 
             # Add possible create action
-            creatableQty = min(agentInfo['resources'][iResource] // iQty for iResource, iQty in resource.getInputs())
+            creatableQty = min(agentInfo['resources'][iResource] // iQty for iResource, iQty in ResourceGraph.getInputs(resource))
             if creatableQty > 0:
                 proposedQty = 1 + random.rangrange(creatableQty)
                 createActions += [CreateAction(self, resource, proposedQty)]
@@ -123,13 +123,12 @@ class Resource:
 # TODO - define resourceGraph
 class ResourceGraph:
 
-    def __init__(self, resourceConfigFile):
-        pass
-
-    def resourceArray(self):
+    @staticmethod
+    def resourceArray():
         return ["iron", "steel"]
 
-    def getInputs(self, resourceName):
+    @staticmethod
+    def getInputs(resourceName):
         if resourceName == "iron":
             return []
         else:
@@ -243,7 +242,7 @@ class World:
                 elif isinstance(action, TransactAction):
                     resourceReqs[action.resource] += action.qty
                 elif isinstance(action, CreateAction):
-                    for iResource, iQty in action.resource.getInputs():
+                    for iResource, iQty in ResourceGraph.getInputs(action.resource):
                         resourceReqs[iResource] += iQty * action.qty
                 elif isinstance(action, ConsumeAction):
                     resourceReqs[action.resource] += action.qty
@@ -267,7 +266,7 @@ class World:
         createActions = filter(lambda x: isinstance(x, CreateAction), proposedPlan)
         for action in createActions:
             currAgentInfo = self.agentInfo[action.agent]
-            inputs = action.resource.getInputs()
+            inputs = ResourceGraph.getInputs(action.resource)
             for iResource, iQty in inputs:
                 currAgentInfo['resources'][iResource] -= iQty * action.qty
             currAgentInfo['resources'][action.resource] += action.qty
