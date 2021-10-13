@@ -8,7 +8,9 @@ if __name__ == "__main__":
 
     register_env(
         "VillageEconomics", 
-        lambda: WorldEnv(gameConfig, ResourceGraph()))
+        lambda _: WorldEnv(gameConfig, ResourceGraph()))
+
+    sim = WorldEnv(gameConfig, ResourceGraph())
 
     ray.init()
     tune.run(
@@ -20,7 +22,7 @@ if __name__ == "__main__":
         checkpoint_freq= 20,
         config= {
             "log_level": "WARN",
-            "num_workers": 3,
+            "num_workers": 1,
             "num_cpus_for_driver": 1,
             "num_cpus_per_worker": 1,
             "lr": 5e-3,
@@ -30,8 +32,8 @@ if __name__ == "__main__":
                     'agent-' + str(i): (None, sim.observation_space, sim.action_space, {})
                         for i in range(sim.num_agents)
                 },
-                "policy_mapping_fn": lambda aid: 'agent-' + str(aid),
+                "policy_mapping_fn": lambda aid: "agent-"+str(aid) if "agent-" not in str(aid) else str(aid),
             },
-            "env": "IrrigationEnv"
+            "env": "VillageEconomics"
         }
     )
