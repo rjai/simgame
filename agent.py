@@ -2,41 +2,13 @@ import random
 import numpy as np
 import collections
 
-#TODO: Move config to seperate file
-#ConfigStart
-import random
-
-def agentMoneyGenerator(agent):
-    return random.randint(10,100)
-
-def agentResourceGenerator(agent, resourceGraph):
-    ret = {}
-    for resource in resourceGraph.resourceArray():
-        ret[resource] = random.randint(10,10000)
-    return ret
-
-def agentAppetiteGenerator(agent, resourceGraph):
-    ret = {}
-    for resource in resourceGraph.resourceArray():
-        ret[resource] = 1
-    return ret
-
-gameConfig = {
-    "numAgents": 10000,
-    "money": agentMoneyGenerator,
-    "resources": agentResourceGenerator,
-    "appetite": agentAppetiteGenerator
-}
-#ConfigEnd
+import gym.spaces
+from ray.rllib.env import MultiAgentEnv
 
 """
     Modelling Actors in our simulation
         (Serves as a wrapper for the RI algo)
 """
-
-# TODO - definev gov agents
-# class GovernmentAgent:
-#     pass
 
 class Agent:
     def __init__(self, id):
@@ -163,6 +135,10 @@ class Market:
         orderedBuyActions = sorted(buyActions, key=lambda x: -x.price)
         orderedSellActions = sorted(sellActions, key=lambda x: x.price)
 
+        print("***MarketExchange***")
+        best_buy, best_sell = max([x.price for x in orderedBuyActions]+[0]), min([x.price for x in orderedSellActions]+[0])
+        print("#Buys=%d, #Sells=%d, Best-Buy=%.2f, Best-Sell=%.2f" % (len(orderedBuyActions), len(orderedSellActions), best_buy, best_sell))
+
         # Cant we achieve better matching in case best buyPrice is much higher than best sellPrice? should be able to fill more orders
         # Example: (assume 1qty oreders)
         #           BuyPrices  - 1 2 3 4 5
@@ -170,15 +146,12 @@ class Market:
         # If processing in priority order, matched buy-sell orders: (5,4)
         # If we do something unfair, matched buy-sell orders: (4,4), (5,5)
         # 
-        # Also, for price-deltas, we'll assume buyers are dumb and hand over the difference as bonus to sellers
+        # Also, for price-deltas, we'll assume buyers are dumb and hand over the difference as bonus to sellers        
         executionPlan = []
         bestBuy, bestSell = None, None
-        print("******")
-        print(len(orderedBuyActions), len(orderedSellActions))
-        if len(orderedBuyActions) > 0 and len(orderedSellActions) > 0:
-            print(max([x.price for x in orderedBuyActions]), min([x.price for x in orderedSellActions]))
-        print("******END")
-        while len(orderedBuyActions) > 0 and len(orderedSellActions) > 0 and orderedBuyActions[0].price > orderedSellActions[0].price:
+        while len(orderedBuyActions) > 0 and len(orderedSellActions) > 0 \
+                and orderedBuyActions[0].price > orderedSellActions[0].price:
+
             bestBuy, bestSell = orderedBuyActions[0], orderedSellActions[0]
             transQty = min(bestBuy.qty, -bestSell.qty)
             executionPlan += [TransactAction(bestBuy.agent,  resource, transQty, bestBuy.price)]
@@ -219,7 +192,6 @@ class World:
                 'money': worldInitializationConfig['money'](agent),
                 'resources': worldInitializationConfig['resources'](agent, resourceGraph),
                 'appetite': worldInitializationConfig['appetite'](agent, resourceGraph),
-                'capabilities': set(),
                 'lastReward': 0,
                 'netReward': 0
             }
@@ -268,9 +240,10 @@ class World:
         # Rewards will be computed as happiness from satisified appetite + net-money gain
         for agent in self.agents:
             self.agentInfo[agent]['lastReward'] = 0
+        
         # Remove actions that impossible for an agent to execute
         proposedPlan = self.__filterInvalidActions(proposedPlan)
-        print(len(proposedPlan), "asdf")
+        
         # Creation cannot consume resources bought in current turn
         # Exchanged resources & money is available on next turn only
         createActions = list(filter(lambda x: isinstance(x, CreateAction), proposedPlan))
@@ -280,15 +253,12 @@ class World:
             for iResource, iQty in inputs:
                 currAgentInfo['resources'][iResource] -= iQty * action.qty
             currAgentInfo['resources'][action.resource] += action.qty
-        print("Create Actions:", len(createActions))
 
         consumeActions = list(filter(lambda x: isinstance(x, ConsumeAction), proposedPlan))
         for action in consumeActions:
             currAgentInfo = self.agentInfo[action.agent]
             currAgentInfo['resources'][action.resource] -= action.qty
             currAgentInfo['lastReward'] += currAgentInfo['appetite'][action.resource] * action.qty
-        print("Consumed Actions:", len(consumeActions))
-        print("Consumed Steel:", len([x for x in consumeActions if x.resource == 'steel']))
 
         executedPlan = list(self.market.simulateExchange(proposedPlan))
         for action in executedPlan:
@@ -296,16 +266,54 @@ class World:
             currAgentInfo['money'] -= action.qty * action.price
             currAgentInfo['lastReward'] -= action.qty * action.price
             currAgentInfo['resources'][action.resource] += action.qty
-        print("Executed Plan:", len(executedPlan))
 
         for agent in self.agents:
             self.agentInfo[agent]['netReward'] += self.agentInfo[agent]['lastReward']
 
-        ret = collections.defaultdict(float)
-        for resource in resourceGraph.resourceArray():
-            for agent in self.agents:
-                ret[resource] += self.agentInfo[agent]["resources"][resource]
-        print(ret)
+
+"""
+    TODO - 
+    reset: () => new-episode, goto start
+    step: (action_dict: agent -> actions) => obs, rew, True, {}
+
+    State-Space: 
+        Private-State: (money, resourceQty[N], appetites[N])
+        Global-State (public): resourceGraph <- skip for now
+        Global-State (partially public): market(=lastPrice[N])
+
+
+"""
+class WorldEnv(MultiAgentEnv):
+    def __init__(self, return_agent_actions = False, part=False):
+        self.num_agents = 5
+        self.observation_space = gym.spaces.Discrete()
+
+        """
+        Action-Space: [{buy,sell,create,consume}, {N resources}, {qty}, {price if buy/sell}]
+            one action taken per chance
+            action will be invalidated if impossible
+        """
+        self.action_space = gym.spaces.Discrete([4, ResourceGraph.GetNumResources(), 10, 50])
+
+    def reset(self):
+        obs = {}
+        self.water = np.random.uniform(200,800)
+        for i in range(self.num_agents):
+            obs[i] = np.array([self.water])
+        return obs
+
+    def step(self, action_dict):
+        obs, rew, done, info = {}, {}, {}, {}
+
+        reward = self.cal_rewards(action_dict)
+
+        for i in range(self.num_agents):
+
+            obs[i], rew[i], done[i], info[i] = np.array([self.curr_water]), reward, True, {}
+
+        done["__all__"] = True
+        return obs, rew, done, info
+
 
 """
     Implementing the actual Simulator 
@@ -317,17 +325,9 @@ class Simulator:
         self.resourceGraph = resourceGraph
         self.agents = [Agent(x) for x in range(worldInitializationConfig['numAgents'])]
         self.world = World(worldInitializationConfig, self.agents, resourceGraph)
-        # self.agentRewards = {agent: 0 for agent in self.agents}
         self.turn = 0
 
     def runSimulationStep(self):
-        print("blah", self.turn)
-
-        retreward = 0
-        for agent in self.agents:
-           retreward += self.world.agentInfo[agent]["netReward"]
-        print(retreward)
-
         proposedPlan = []
         for agent in self.agents:
             proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
@@ -339,7 +339,8 @@ class Simulator:
         for _ in range(numTurns):
             self.runSimulationStep()
 
+
 if __name__=="__main__":
-    resourceGraph = ResourceGraph()
-    sim = Simulator(gameConfig, resourceGraph)
-    sim.runSimulation(100)
+    # sim = Simulator(gameConfig, ResourceGraph())
+    # sim.runSimulation(100)
+    pass
