@@ -5,6 +5,32 @@ import collections
 import gym.spaces
 from ray.rllib.env import MultiAgentEnv
 
+#ConfigStart
+import random
+
+def agentMoneyGenerator(agent):
+    return random.randint(10,100)
+
+def agentResourceGenerator(agent, resourceGraph):
+    return {
+        resource : random.randint(10,10000)
+            for resource in resourceGraph.resourceArray()
+    }
+
+def agentAppetiteGenerator(agent, resourceGraph):
+    return {
+        resource: 1
+            for resource in resourceGraph.resourceArray()
+    }
+
+gameConfig = {
+    "numAgents": 10000,
+    "money": agentMoneyGenerator,
+    "resources": agentResourceGenerator,
+    "appetite": agentAppetiteGenerator
+}
+#ConfigEnd
+
 """
     Modelling Actors in our simulation
         (Serves as a wrapper for the RI algo)
@@ -103,14 +129,14 @@ class ResourceGraph:
 
     @staticmethod
     def resourceArray():
-        return ["iron", "steel"]
+        return [0, 1]
 
     @staticmethod
     def getInputs(resourceName):
-        if resourceName == "iron":
+        if resourceName == 0:
             return []
         else:
-            return [("iron", 2)]
+            return [(0, 2)]
 
 class Market:
     
@@ -270,6 +296,13 @@ class World:
         for agent in self.agents:
             self.agentInfo[agent]['netReward'] += self.agentInfo[agent]['lastReward']
 
+    # Get vectorized state for RL library
+    def getAgentState(self, agent):
+        return 
+        [self.agentInfo[agent]["money"]] + 
+        [self.agentInfo[agent]["resources"][resource] for resource in self.resourceGraph.resourceArray()] + 
+        [self.agentInfo[agent]["appetite"][resource] for resource in self.resourceGraph.resourceArray()] + 
+        [self.market.lastPrices[resource] for resource in self.resourceGraph.resourceArray()]
 
 """
     TODO - 
@@ -286,30 +319,51 @@ class World:
 class WorldEnv(MultiAgentEnv):
     def __init__(self, return_agent_actions = False, part=False):
         self.num_agents = 5
-        self.observation_space = gym.spaces.Discrete()
+        self.agents = ["agent-%d" % idx for idx in range(self.num_agents)]
+        self.num_resources = ResourceGraph.GetNumResources()
+        self.World = None
+
+        """
+        State-Space: [Money, Inventory[N], Appetite[N], lastPrices[N]]
+        """
+        self.observation_space = gym.spaces.Discrete(
+            [100000] + 
+            [1000 for _ in range(self.num_resources)] + 
+            [10 for _ in range(self.num_resources)] + 
+            [50 for _ in range(self.num_resources)])
 
         """
         Action-Space: [{buy,sell,create,consume}, {N resources}, {qty}, {price if buy/sell}]
             one action taken per chance
             action will be invalidated if impossible
         """
-        self.action_space = gym.spaces.Discrete([4, ResourceGraph.GetNumResources(), 10, 50])
+        self.action_space = gym.spaces.Discrete([4, self.num_resources, 10, 50])
 
     def reset(self):
-        obs = {}
-        self.water = np.random.uniform(200,800)
-        for i in range(self.num_agents):
-            obs[i] = np.array([self.water])
-        return obs
+        self.World = World(gameConfig, self.agents, ResourceGraph())
+        return {
+            agent: self.world.getAgentState(agent)
+                for agent in self.agents
+        }
 
     def step(self, action_dict):
+        
+        def buildActionObj(agent, a):
+            if a[0] == 0:
+                return CreateAction(agent, a[1], a[2])
+            elif a[1] == 1:
+                return TransactAction(agent, a[1], a[2], a[3])
+            elif a[1] == 2:
+                return TransactAction(agent, a[1], -a[2], a[3])
+            else:
+                return ConsumeAction(agent, a[1], a[2])
+
+        proposedPlan = [buildActionObj(agent, action_dict[agent][0]) for agent in action_dict]
+        self.world.updateWorld(proposedPlan)
+
         obs, rew, done, info = {}, {}, {}, {}
-
-        reward = self.cal_rewards(action_dict)
-
         for i in range(self.num_agents):
-
-            obs[i], rew[i], done[i], info[i] = np.array([self.curr_water]), reward, True, {}
+            obs[i], rew[i], done[i], info[i] = self.world.getAgentState(agent), self.world.agentInfo[agent]["lastReward"], True, {}
 
         done["__all__"] = True
         return obs, rew, done, info
@@ -319,25 +373,25 @@ class WorldEnv(MultiAgentEnv):
     Implementing the actual Simulator 
         (Runs the interactions between the agents & environment)
 """
-class Simulator:
+# class Simulator:
 
-    def __init__(self, worldInitializationConfig, resourceGraph):
-        self.resourceGraph = resourceGraph
-        self.agents = [Agent(x) for x in range(worldInitializationConfig['numAgents'])]
-        self.world = World(worldInitializationConfig, self.agents, resourceGraph)
-        self.turn = 0
+#     def __init__(self, worldInitializationConfig, resourceGraph):
+#         self.resourceGraph = resourceGraph
+#         self.agents = [Agent(x) for x in range(worldInitializationConfig['numAgents'])]
+#         self.world = World(worldInitializationConfig, self.agents, resourceGraph)
+#         self.turn = 0
 
-    def runSimulationStep(self):
-        proposedPlan = []
-        for agent in self.agents:
-            proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
+#     def runSimulationStep(self):
+#         proposedPlan = []
+#         for agent in self.agents:
+#             proposedPlan += agent.plan(self.world.agentInfo[agent]['lastReward'], self.world.agentInfo[agent], self.world.market)
 
-        self.world.updateWorld(proposedPlan)
-        self.turn += 1
+#         self.world.updateWorld(proposedPlan)
+#         self.turn += 1
 
-    def runSimulation(self, numTurns):
-        for _ in range(numTurns):
-            self.runSimulationStep()
+#     def runSimulation(self, numTurns):
+#         for _ in range(numTurns):
+#             self.runSimulationStep()
 
 
 if __name__=="__main__":

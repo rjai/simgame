@@ -2,40 +2,13 @@ from ray.tune.registry import register_env
 import ray
 import ray.tune as tune
 
-from agent import Simulator, ResourceGraph
-
-#ConfigStart
-import random
-
-def agentMoneyGenerator(agent):
-    return random.randint(10,100)
-
-def agentResourceGenerator(agent, resourceGraph):
-    return {
-        resource : random.randint(10,10000)
-            for resource in resourceGraph.resourceArray()
-    }
-
-def agentAppetiteGenerator(agent, resourceGraph):
-    return {
-        resource: 1
-            for resource in resourceGraph.resourceArray()
-    }
-
-gameConfig = {
-    "numAgents": 10000,
-    "money": agentMoneyGenerator,
-    "resources": agentResourceGenerator,
-    "appetite": agentAppetiteGenerator
-}
-#ConfigEnd
-
+from agent import WorldEnv, ResourceGraph, gameConfig
 
 if __name__ == "__main__":  
 
     register_env(
         "VillageEconomics", 
-        lambda: Simulator(gameConfig, ResourceGraph()))
+        lambda: WorldEnv(gameConfig, ResourceGraph()))
 
     ray.init()
     tune.run(
