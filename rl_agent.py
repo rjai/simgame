@@ -12,27 +12,26 @@ if __name__ == "__main__":
 
     sim = WorldEnv(gameConfig, ResourceGraph())
 
-    ray.init()
+    ray.init(dashboard_port=40001, num_cpus=32, num_gpus=0, dashboard_host='0.0.0.0')
     tune.run(
         name= 'smart_eco',
         run_or_experiment= 'PG',
         stop= {
-            "training_iteration": 100
+            "training_iteration": 100000
         },
         checkpoint_freq= 20,
         config= {
             "log_level": "WARN",
-            "num_workers": 1,
+            "num_workers": 14,
             "num_cpus_for_driver": 1,
-            "num_cpus_per_worker": 1,
+            "num_cpus_per_worker": 2,
             "lr": 5e-3,
-            "model": {"fcnet_hiddens": [8, 8]},
+            "model": {"fcnet_hiddens": [256, 256]},
             "multiagent": {
                 "policies": {
-                    'agent-' + str(i): (None, sim.observation_space, sim.action_space, {})
-                        for i in range(sim.num_agents)
+                    "0": (None, sim.observation_space, sim.action_space, {})
                 },
-                "policy_mapping_fn": lambda aid: "agent-"+str(aid) if "agent-" not in str(aid) else str(aid),
+                "policy_mapping_fn": lambda aid: "0",
             },
             "env": "VillageEconomics"
         }

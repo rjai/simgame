@@ -22,7 +22,7 @@ def agentAppetiteGenerator(agent, resourceGraph):
     }
 
 gameConfig = {
-    "numAgents": 3,
+    "numAgents": 100,
     "money": agentMoneyGenerator,
     "resources": agentResourceGenerator,
     "appetite": agentAppetiteGenerator
@@ -163,9 +163,9 @@ class Market:
         orderedBuyActions = sorted(buyActions, key=lambda x: -x.price)
         orderedSellActions = sorted(sellActions, key=lambda x: x.price)
 
-        print("***MarketExchange***")
+        #print("***MarketExchange***")
         best_buy, best_sell = max([x.price for x in orderedBuyActions]+[0]), min([x.price for x in orderedSellActions]+[0])
-        print("#Buys=%d, #Sells=%d, Best-Buy=%.2f, Best-Sell=%.2f" % (len(orderedBuyActions), len(orderedSellActions), best_buy, best_sell))
+        #print("#Buys=%d, #Sells=%d, Best-Buy=%.2f, Best-Sell=%.2f" % (len(orderedBuyActions), len(orderedSellActions), best_buy, best_sell))
 
         # Cant we achieve better matching in case best buyPrice is much higher than best sellPrice? should be able to fill more orders
         # Example: (assume 1qty oreders)
@@ -295,11 +295,11 @@ class World:
             currAgentInfo['lastReward'] -= action.qty * action.price
             currAgentInfo['resources'][action.resource] += action.qty
 
-        print ("Executed: %d Create, %d Consume, %d Transact" % (len(createActions), len(consumeActions), len(executedPlan)/2))
+        #print ("Executed: %d Create, %d Consume, %d Transact" % (len(createActions), len(consumeActions), len(executedPlan)/2))
 
         for agent in self.agents:
             self.agentInfo[agent]['netReward'] += self.agentInfo[agent]['lastReward']
-        print ("Net reward: %d" % sum(self.agentInfo[agent]["lastReward"] for agent in self.agents))
+        #print("Net reward: %d" % sum(self.agentInfo[agent]["lastReward"] for agent in self.agents))
 
     # Get vectorized state for RL library
     def getAgentState(self, agent):
@@ -323,7 +323,7 @@ class World:
 """
 class WorldEnv(MultiAgentEnv):
     def __init__(self, return_agent_actions = False, part=False):
-        self.num_agents = 5
+        self.num_agents = gameConfig["numAgents"]
         self.agents = ["agent-%d" % idx for idx in range(self.num_agents)]
         self.num_resources = ResourceGraph.GetNumResources()
         self.world = None
